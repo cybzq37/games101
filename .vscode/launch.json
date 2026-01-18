@@ -1,0 +1,68 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug",
+            "type": "lldb",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/games101.exe",
+            "args": [],
+            "cwd": "${workspaceFolder}/build",
+            "env": {
+                "PATH": "${workspaceFolder}/build;${env:PATH}",
+                "PYTHONIOENCODING": "utf-8",
+                "LANG": "zh_CN.UTF-8"
+            },
+            "stopOnEntry": false,
+            "console": "integratedTerminal",
+            "preLaunchTask": "Build",
+            "sourceLanguages": ["cpp"],
+            "sourceMap": {
+                "/build": "${workspaceFolder}/build",
+                "${workspaceFolder}/build": "${workspaceFolder}/build"
+            }
+        },
+        {
+            "name": "Debug (no build)",
+            "type": "lldb",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/games101.exe",
+            "args": [],
+            "cwd": "${workspaceFolder}/build",
+            "env": {
+                "PATH": "${workspaceFolder}/build;${env:PATH}",
+                "PYTHONIOENCODING": "utf-8",
+                "LANG": "zh_CN.UTF-8"
+            },
+            "stopOnEntry": false,
+            "console": "integratedTerminal",
+            "sourceLanguages": ["cpp"],
+            "sourceMap": {
+                "/build": "${workspaceFolder}/build",
+                "${workspaceFolder}/build": "${workspaceFolder}/build"
+            }
+        },
+        {
+            "name": "Release (Rebuild)",
+            "type": "lldb",
+            "request": "launch",
+            "program": "${workspaceFolder}/build-release/games101.exe",
+            "args": [],
+            "cwd": "${workspaceFolder}/build-release",
+            "env": {
+                "PATH": "${workspaceFolder}/build-release;${env:PATH}",
+                "PYTHONIOENCODING": "utf-8",
+                "LANG": "zh_CN.UTF-8"
+            },
+            "stopOnEntry": false,
+            "console": "integratedTerminal",
+            "preLaunchTask": "Build Release",
+            "sourceLanguages": ["cpp"],
+            "noDebug": true,
+            "sourceMap": {
+                "/build-release": "${workspaceFolder}/build-release",
+                "${workspaceFolder}/build-release": "${workspaceFolder}/build-release"
+            }
+        }
+    ]
+}
