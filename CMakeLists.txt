@@ -66,6 +66,9 @@ endif()
 # 将源代码添加到此项目的可执行文件。
 add_executable (games101
     "src/main.cpp"
+    "src/assignment1/assignment1.cpp"
+    "src/assignment1/Triangle.cpp"
+    "src/assignment1/rasterizer.cpp"
 )
 
 if (CMAKE_VERSION VERSION_GREATER 3.12)
@@ -73,7 +76,12 @@ if (CMAKE_VERSION VERSION_GREATER 3.12)
 endif()
 
 # 使用 target_include_directories 替代全局 include_directories
-target_include_directories(games101 PRIVATE ${FFMPEG_INCLUDE_DIR} ${OpenCV_INCLUDE_DIRS} ${EIGEN_INCLUDE_DIR})
+target_include_directories(games101 PRIVATE
+    ${FFMPEG_INCLUDE_DIR}
+    ${OpenCV_INCLUDE_DIRS}
+    ${EIGEN_INCLUDE_DIR}
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"  # 包含 src 目录，以便访问 assignment1 目录下的头文件
+)
 target_link_directories(games101 PRIVATE ${FFMPEG_LIB_DIR})
 target_link_libraries(games101 PRIVATE
     avcodec

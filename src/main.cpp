@@ -2,6 +2,10 @@
 #include <opencv2/opencv.hpp>
 #include <Eigen/Dense>
 
+// 声明 assignment1 的函数
+// 注意：函数定义在 src/assignment1/assignment1.cpp 中
+int run_assignment1(int argc, const char** argv);
+
 int main(int argc, char* argv[])
 {
     std::cout << "Games101 项目启动" << std::endl;
@@ -15,5 +19,7 @@ int main(int argc, char* argv[])
     // cv::Mat image = cv::Mat::zeros(100, 100, CV_8UC3);
     // std::cout << "\nOpenCV 矩阵创建成功" << std::endl;
 
-    return 0;
+    // 运行 Assignment 1
+    std::cout << "\n运行 Assignment 1..." << std::endl;
+    return run_assignment1(argc, const_cast<const char**>(argv));
 }

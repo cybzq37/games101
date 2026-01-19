@@ -142,7 +142,7 @@ private:
    * @param y 像素 y 坐标
    * @return 在缓冲区中的一维索引
    */
-  int get_index(int x, int y);
+  int get_index(int x, int y) const;
 
   // ==================== 画布尺寸 ====================
   int width, height;  // 画布宽度和高度（像素）
