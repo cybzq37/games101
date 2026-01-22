@@ -69,7 +69,7 @@ add_executable (games101
     "src/assignment1/assignment1.cpp"
     "src/assignment1/Triangle.cpp"
     "src/assignment1/rasterizer.cpp"
-)
+ "src/assignment2/Triangle.h" "src/assignment2/assignment1.cpp" "src/assignment2/rasterizer.cpp" "src/assignment2/rasterizer.h" "src/assignment2/Triangle.cpp" )
 
 if (CMAKE_VERSION VERSION_GREATER 3.12)
   set_property(TARGET games101 PROPERTY CXX_STANDARD 20)
