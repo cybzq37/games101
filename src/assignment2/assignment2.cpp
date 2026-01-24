@@ -14,6 +14,19 @@
 
 constexpr double MY_PI = 3.1415926;
 
+/* 模型变换 */
+Eigen::Matrix4f get_model_matrix(float rotation_angle) // 旋转矩阵（绕z轴旋转）
+{
+    Eigen::Matrix4f model = Eigen::Matrix4f::Identity();
+    float rad = rotation_angle / 180.0 * MY_PI;
+    float sin = std::sin(rad);
+    float cos = std::cos(rad);
+    model.col(0) << cos, sin, 0, 0;
+    model.col(1) << -sin, cos, 0, 0;
+    return model;
+}
+
+/* 视口变换 */
 Eigen::Matrix4f get_view_matrix(Eigen::Vector3f eye_pos)
 {
 	Eigen::Matrix4f view = Eigen::Matrix4f::Identity();
@@ -21,17 +34,7 @@ Eigen::Matrix4f get_view_matrix(Eigen::Vector3f eye_pos)
     return view;
 }
 
-Eigen::Matrix4f get_model_matrix(float rotation_angle) // 旋转矩阵（绕z轴旋转）
-{
-	Eigen::Matrix4f model = Eigen::Matrix4f::Identity();
-	float rad = rotation_angle / 180.0 * MY_PI;
-	float sin = std::sin(rad);
-	float cos = std::cos(rad);
-	model.col(0) << cos, sin, 0, 0;
-	model.col(1) << -sin, cos, 0, 0;
-    return model;
-}
-
+/* 投影变换 */
 Eigen::Matrix4f get_projection_matrix( // 构建透视矩阵
     float eye_fov,  // 垂直视野角
 	float aspect_ratio, // 视口宽高比
@@ -50,9 +53,9 @@ Eigen::Matrix4f get_projection_matrix( // 构建透视矩阵
 
 	Eigen::Matrix4f m_persp_ortho = Eigen::Matrix4f::Identity();
     m_persp_ortho << n, 0, 0, 0,
-             0, n, 0, 0,
-             0, 0, n + f, -n * f,
-		     0, 0, 1, 0;
+                     0, n, 0, 0,
+                     0, 0, n + f, -n * f,
+		             0, 0, 1, 0;
 
 	Eigen::Matrix4f m_ortho = Eigen::Matrix4f::Identity();
     m_ortho << 2 / (r - l), 0, 0, -(r + l) / 2,
@@ -61,8 +64,6 @@ Eigen::Matrix4f get_projection_matrix( // 构建透视矩阵
 		       0, 0, 0, 1;
 
 	return m_ortho * m_persp_ortho;
-
-    // Edit end
 }
 
 
@@ -98,94 +99,93 @@ Eigen::Matrix4f get_rotation(Vector3f axis, float angel)
 }
 // Edit end
 
-int run_assignment1(int argc, const char** argv)
+int assignment2(int argc, const char** argv)
 {
     float angle = 0;
     bool command_line = false;
     std::string filename = "output.png";
 
-    if (argc >= 3) {
+    if (argc == 2)
+    {
         command_line = true;
-        angle = std::stof(argv[2]); // -r by default
-        if (argc == 4) {
-            filename = std::string(argv[3]);
-        }
-        else
-            return 0;
+        filename = std::string(argv[1]);
     }
 
-    rst::Rasterizer r(700, 700);    // 创建光栅化器对象
+    rst::Rasterizer r(700, 700);
 
-    Eigen::Vector3f eye_pos = {0, 0, 5}; // 相机位置
+    Eigen::Vector3f eye_pos = {0,0,5};
 
-    // Edit begin
-    Eigen::Vector3f rotate_axis = {1,1,0}; // 旋转轴
-    // Edit end
 
-    std::vector<Eigen::Vector3f> pos{{2, 0, -2}, {0, 2, -2}, {-2, 0, -2}}; // 三角形顶点
+    std::vector<Eigen::Vector3f> pos
+            {
+                    {2, 0, -2},
+                    {0, 2, -2},
+                    {-2, 0, -2},
+                    {3.5, -1, -5},
+                    {2.5, 1.5, -5},
+                    {-1, 0.5, -5}
+            };
 
-    std::vector<Eigen::Vector3i> ind{{0, 1, 2}}; // 三角形索引
+    std::vector<Eigen::Vector3i> ind
+            {
+                    {0, 1, 2},
+                    {3, 4, 5}
+            };
 
-    auto pos_id = r.load_positions(pos); // 加载顶点位置
-    auto ind_id = r.load_indices(ind); // 加载顶点索引
+    std::vector<Eigen::Vector3f> cols
+            {
+                    {217.0, 238.0, 185.0},
+                    {217.0, 238.0, 185.0},
+                    {217.0, 238.0, 185.0},
+                    {185.0, 217.0, 238.0},
+                    {185.0, 217.0, 238.0},
+                    {185.0, 217.0, 238.0}
+            };
+
+    auto pos_id = r.load_positions(pos);
+    auto ind_id = r.load_indices(ind);
+    auto col_id = r.load_colors(cols);
 
     int key = 0;
     int frame_count = 0;
 
-    if (command_line) {
+    if (command_line)
+    {
         r.clear(rst::Buffers::Color | rst::Buffers::Depth);
 
-        // Edit begin
-        //围绕z轴旋转
-        //r.set_model(get_model_matrix(angle));
-        //围绕任意轴旋转
-        r.set_model(get_rotation(rotate_axis,angle));
-        // Edit end
-
+        r.set_model(get_model_matrix(angle));
         r.set_view(get_view_matrix(eye_pos));
-        //注意这里写入的zNear和zFar是正数，代表着距离，但课程上推导的透视矩阵是坐标，且假定是朝向z负半轴的，所以透视矩阵是需要取反的
         r.set_projection(get_projection_matrix(45, 1, 0.1, 50));
 
-        r.draw(pos_id, ind_id, rst::Primitive::Triangle);
+        r.draw(pos_id, ind_id, col_id, rst::Primitive::Triangle);
         cv::Mat image(700, 700, CV_32FC3, r.frame_buffer().data());
         image.convertTo(image, CV_8UC3, 1.0f);
+        cv::cvtColor(image, image, cv::COLOR_RGB2BGR);
 
         cv::imwrite(filename, image);
 
         return 0;
     }
 
-    while (key != 27) {
+    while(key != 27)
+    {
         r.clear(rst::Buffers::Color | rst::Buffers::Depth);
 
-        // Edit begin
-        //围绕z轴旋转
-        //r.set_model(get_model_matrix(angle));
-        //围绕任意轴旋转
-        r.set_model(get_rotation(rotate_axis,angle));
-        // Edit end
-
+        r.set_model(get_model_matrix(angle));
         r.set_view(get_view_matrix(eye_pos));
-        //注意这里写入的zNear和zFar是正数，代表着距离，但课程上推导的透视矩阵是坐标，且假定是朝向z负半轴的，所以透视矩阵是需要取反的
         r.set_projection(get_projection_matrix(45, 1, 0.1, 50));
 
-        r.draw(pos_id, ind_id, rst::Primitive::Triangle);
+        r.draw(pos_id, ind_id, col_id, rst::Primitive::Triangle);
 
         cv::Mat image(700, 700, CV_32FC3, r.frame_buffer().data());
         image.convertTo(image, CV_8UC3, 1.0f);
+        cv::cvtColor(image, image, cv::COLOR_RGB2BGR);
         cv::imshow("image", image);
         key = cv::waitKey(10);
 
         std::cout << "frame count: " << frame_count++ << '\n';
-
-        if (key == 'a') {
-            angle += 10;
-        }
-        else if (key == 'd') {
-            angle -= 10;
-        }
     }
 
     return 0;
 }
-
+// clang-format on

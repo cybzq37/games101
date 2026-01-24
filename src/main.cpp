@@ -2,9 +2,9 @@
 #include <opencv2/opencv.hpp>
 #include <Eigen/Dense>
 
-// 声明 assignment1 的函数
-// 注意：函数定义在 src/assignment1/assignment1.cpp 中
-int run_assignment1(int argc, const char** argv);
+// 声明 assignment2 的函数
+// 注意：函数定义在 src/assignment2/assignment2.cpp 中
+int assignment2(int argc, const char** argv);
 
 int main(int argc, char* argv[])
 {
@@ -21,5 +21,5 @@ int main(int argc, char* argv[])
 
     // 运行 Assignment 1
     std::cout << "\n运行 Assignment 1..." << std::endl;
-    return run_assignment1(argc, const_cast<const char**>(argv));
+    return assignment2(argc, const_cast<const char**>(argv));
 }

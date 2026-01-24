@@ -300,11 +300,11 @@ void rst::Rasterizer::draw(rst::pos_buf_id pos_buffer,
     }
 }
 
-void rst::Rasterizer::rasterize_wireframe(const Triangle &t) {
-  draw_line(t.c(), t.a());
-  draw_line(t.a(), t.b());
-  draw_line(t.b(), t.c());
-}
+// void rst::Rasterizer::rasterize_wireframe(const Triangle &t) {
+//   draw_line(t.c(), t.a());
+//   draw_line(t.a(), t.b());
+//   draw_line(t.b(), t.c());
+// }
 
 void rst::Rasterizer::set_model(const Eigen::Matrix4f& m)
 {

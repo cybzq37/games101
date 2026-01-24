@@ -2,6 +2,7 @@
 #include "Eigen/src/Core/Matrix.h"
 
 #include <algorithm>
+#include <array>
 #include <opencv2/opencv.hpp>
 #include <Eigen/Eigen>
 #include <math.h>
@@ -10,7 +11,7 @@
 using namespace Eigen;
 using namespace std;
 
-#define SSAA true
+#define SSAA false
 
 /**
  * 加载顶点位置数据到缓冲区
@@ -19,15 +20,9 @@ using namespace std;
  */
 rst::pos_buf_id rst::Rasterizer::load_positions(const std::vector<Eigen::Vector3f> &positions)
 {
-    // 获取一个新的唯一缓冲区 ID
-    auto id = get_next_id();
-
-    // 将顶点位置数据存储到 pos_buf 映射中
-    // emplace 直接在 map 中构造键值对，避免不必要的拷贝
-    pos_buf.emplace(id, positions);
-
-    // 返回包含缓冲区 ID 的结构体
-    return {id};
+    auto id = get_next_id();  // 获取一个新的唯一缓冲区 ID
+    pos_buf.emplace(id, positions); // 将顶点位置数据存储到 pos_buf 映射中
+	return { id }; // 返回包含缓冲区 ID 的结构体
 }
 
 /**
@@ -38,14 +33,8 @@ rst::pos_buf_id rst::Rasterizer::load_positions(const std::vector<Eigen::Vector3
  */
 rst::ind_buf_id rst::Rasterizer::load_indices(const std::vector<Eigen::Vector3i> &indices)
 {
-    // 获取一个新的唯一缓冲区 ID
     auto id = get_next_id();
-
-    // 将顶点索引数据存储到 ind_buf 映射中
-    // emplace 直接在 map 中构造键值对，避免不必要的拷贝
     ind_buf.emplace(id, indices);
-
-    // 返回包含缓冲区 ID 的结构体
     return {id};
 }
 
@@ -61,15 +50,44 @@ auto to_vec4(const Eigen::Vector3f& v3, float w = 1.0f) {
 }
 
 /**
- * 判断点是否在三角形内
+ * 判断点是否在三角形内（使用叉积法）
+ *
+ * 算法原理：
+ * 1. 计算三角形三条边的向量：ab, bc, ca
+ * 2. 计算测试点到三个顶点的向量：ap, bp, cp
+ * 3. 计算叉积：ab×ap, bc×bp, ca×cp
+ * 4. 如果所有叉积的z分量同号（都>0或都<0），则点在三角形内部
+ *
+ * 注意：
+ * - 假设三角形顶点按逆时针顺序排列（根据Triangle.h注释）
+ * - 点在边上时（叉积为0）会被判定为外部，这是光栅化的常见做法
+ *
  * @param x 点 x 坐标
  * @param y 点 y 坐标
- * @param _v 三角形顶点数组
+ * @param v 三角形顶点数组（3个Vector3f，按逆时针顺序）
  * @return 是否在三角形内
  */
- static bool insideTriangle(int x, int y, const Vector3f *_v) {
+static bool insideTriangle(int x, int y, const std::array<Vector4f, 3>& v) {
+	 // 计算三条边的向量（从v0到v1，v1到v2，v2到v0）
+	 // 注意：v 是 Vector4f 数组，需要提取前三个分量（x, y, z）用于 2D 判断
+	 Eigen::Vector3f ab = (v[1] - v[0]).head<3>();
+	 Eigen::Vector3f bc = (v[2] - v[1]).head<3>();
+	 Eigen::Vector3f ca = (v[0] - v[2]).head<3>();
 
- }
+	 // 计算测试点到三个顶点的向量
+	 Eigen::Vector3f ap(x - v[0].x(), y - v[0].y(), 0);
+	 Eigen::Vector3f bp(x - v[1].x(), y - v[1].y(), 0);
+	 Eigen::Vector3f cp(x - v[2].x(), y - v[2].y(), 0);
+
+	 // 计算叉积（只关心z分量，因为所有向量都在xy平面）
+	 float z1 = ab.cross(ap).z();
+	 float z2 = bc.cross(bp).z();
+	 float z3 = ca.cross(cp).z();
+
+	 // 如果所有叉积z分量同号（都>0或都<0），则点在三角形内
+	 // 注意：点在边上时（z=0）会被判定为外部
+	 return (z1 > 0 && z2 > 0 && z3 > 0) || (z1 < 0 && z2 < 0 && z3 < 0);
+}
 
  void rst::Rasterizer::draw(rst::pos_buf_id pos_buffer, rst::ind_buf_id ind_buffer, rst::col_buf_id col_buffer,
            Primitive type) {
@@ -77,14 +95,18 @@ auto to_vec4(const Eigen::Vector3f& v3, float w = 1.0f) {
 	 auto& ind = ind_buf[ind_buffer.ind_id];
 	 auto& col = col_buf[col_buffer.col_id];
 
-     float f1 = (50 - 0.1) / 2.0;
-     float f2 = (50 + 0.1) / 2.0;
+     // f1 和 f2 用于将NDC的z值（范围[-1,1]）线性映射到深度缓冲区的实际深度范围[near, far]（这里是0.1到50）
+     // 转换公式: z_buffer = z_ndc * f1 + f2
+     // 这里的50来源于远裁剪面的z值zFar（assignment2.cpp中get_projection_matrix调用里传入的参数）
+     // 画面的有效深度区间是[0.1, 50]，也即近平面为0.1，远平面为50
+     float f1 = (50 - 0.1) / 2.0; // 一半的深度范围宽度
+     float f2 = (50 + 0.1) / 2.0; // 深度范围的中心值
 
 	 Eigen::Matrix4f mvp = projection * view * model;
-	 for (auto& i : ind)
+	 for (auto& i : ind) // 处理每个顶点索引三元组
      {
          Triangle t;
-         Eigen::Vector4f v[] = {
+		 Eigen::Vector4f v[] = { // 对3个顶点进行MVP变换
              mvp * to_vec4(buf[i[0]], 1.0f),
              mvp * to_vec4(buf[i[1]], 1.0f),
              mvp * to_vec4(buf[i[2]], 1.0f)
@@ -93,7 +115,7 @@ auto to_vec4(const Eigen::Vector3f& v3, float w = 1.0f) {
          for (auto& vec : v) {
              vec /= vec.w();
          }
-		 // Viewport transformation 视口变换,转为屏幕坐标
+		 // 转为屏幕坐标
          for (auto& vert : v)
          {
              vert.x() = 0.5 * width * (vert.x() + 1.0); // x映射到0到width
@@ -103,10 +125,9 @@ auto to_vec4(const Eigen::Vector3f& v3, float w = 1.0f) {
 
          for (int i = 0; i < 3; ++i)
          {
-             t.setVertex(i, v[i].head<3>());
-             t.setVertex(i, v[i].head<3>());
-             t.setVertex(i, v[i].head<3>());
+             t.setVertex(i, v[i].head<3>()); // 设置三角形第i个顶点的坐标
          }
+
 
          auto col_x = col[i[0]];
          auto col_y = col[i[1]];
@@ -116,7 +137,7 @@ auto to_vec4(const Eigen::Vector3f& v3, float w = 1.0f) {
          t.setColor(1, col_y[0], col_y[1], col_y[2]);
          t.setColor(2, col_z[0], col_z[1], col_z[2]);
 
-         rasterize_triangle(t);
+         rasterize_wireframe(t);
      }
  }
 
@@ -292,12 +313,26 @@ void rst::Rasterizer::set_projection(const Eigen::Matrix4f& p)
 }
 
 void rst::Rasterizer::clear(rst::Buffers buff) {
-  if((buff & rst::Buffers::Color) == rst::Buffers::Color) { // 位运算，如果buff包含颜色缓冲区
-    std::fill(frame_buf.begin(), frame_buf.end(), Eigen::Vector3f(0, 0, 0));
-  }
-  if ((buff & rst::Buffers::Depth) == rst::Buffers::Depth) { // 位运算，如果buff包含深度缓冲区
-    std::fill(depth_buf.begin(), depth_buf.end(), std::numeric_limits<float>::infinity());
-  }
+    if ((buff & rst::Buffers::Color) == rst::Buffers::Color) // 位运算，如果buff包含颜色缓冲区
+    {
+        std::fill(frame_buf.begin(), frame_buf.end(), Eigen::Vector3f{0, 0, 0});
+        //SSAA Begin
+        for (int i = 0; i < frame_buf_2xSSAA.size(); i++) {
+            frame_buf_2xSSAA[i].resize(4);  // 每个像素有4个子采样点（2x2 SSAA）
+            std::fill(frame_buf_2xSSAA[i].begin(), frame_buf_2xSSAA[i].end(), Eigen::Vector3f{0, 0, 0});
+        }
+        //SSAA End
+    }
+    if ((buff & rst::Buffers::Depth) == rst::Buffers::Depth) // 位运算，如果buff包含深度缓冲区
+    {
+        std::fill(depth_buf.begin(), depth_buf.end(), std::numeric_limits<float>::infinity());
+        //SSAA Begin
+        for (int i = 0; i < depth_buf_2xSSAA.size(); i++) {
+            depth_buf_2xSSAA[i].resize(4);
+            std::fill(depth_buf_2xSSAA[i].begin(), depth_buf_2xSSAA[i].end(), std::numeric_limits<float>::infinity());
+        }
+        //SSAA End
+    }
 }
 
 /**
@@ -316,6 +351,10 @@ rst::Rasterizer::Rasterizer(int w, int h) : width(w), height(h) {
   // 调整深度缓冲区大小：为每个像素分配深度值存储空间
   // 总像素数 = 宽度 × 高度，每个像素存储一个 float (深度值，用于深度测试)
   depth_buf.resize(w * h);
+
+  // 超采样抗锯齿
+  frame_buf_2xSSAA.resize(w * h);
+  depth_buf_2xSSAA.resize(w * h);
 }
 
 /**
@@ -350,15 +389,27 @@ void rst::Rasterizer::set_pixel(const Eigen::Vector3f& point, const Eigen::Vecto
 }
 
 
+// computeBarycentric2D 是一个仅在当前编译单元（当前 cpp 文件）可见的静态函数
+// “static”关键字限定了其作用域仅为本源文件（编译单元）内部
+// 这种文件作用域的静态方法通常放在全局命名空间、类/命名空间定义之外
+// 只要在使用前定义即可，不要求放在文件开头或结尾，但通常会放在相关实现附近，方便逻辑归类
+static std::tuple<float, float, float> computeBarycentric2D(float x, float y, const Vector3f* v)
+{
+    float c1 = (x*(v[1].y() - v[2].y()) + (v[2].x() - v[1].x())*y + v[1].x()*v[2].y() - v[2].x()*v[1].y()) / (v[0].x()*(v[1].y() - v[2].y()) + (v[2].x() - v[1].x())*v[0].y() + v[1].x()*v[2].y() - v[2].x()*v[1].y());
+    float c2 = (x*(v[2].y() - v[0].y()) + (v[0].x() - v[2].x())*y + v[2].x()*v[0].y() - v[0].x()*v[2].y()) / (v[1].x()*(v[2].y() - v[0].y()) + (v[0].x() - v[2].x())*v[1].y() + v[2].x()*v[0].y() - v[0].x()*v[2].y());
+    float c3 = (x*(v[0].y() - v[1].y()) + (v[1].x() - v[0].x())*y + v[0].x()*v[1].y() - v[1].x()*v[0].y()) / (v[2].x()*(v[0].y() - v[1].y()) + (v[1].x() - v[0].x())*v[2].y() + v[0].x()*v[1].y() - v[1].x()*v[0].y());
+    return {c1,c2,c3};
+}
+
 /**
  * 绘制图元（图形渲染管线的主函数）
- * 执行完整的图形渲染流程：模型变换 → 视图变换 → 投影变换 → 透视除法 → 视口变换 → 光栅化
+ * 执行完整的图形渲染流程：MVP变换 → 透视除法 → 光栅化
  *
  * @param pos_buffer 顶点位置缓冲区 ID
  * @param ind_buffer 顶点索引缓冲区 ID
  * @param type 图元类型（目前仅支持三角形）
  */
- void rasterize_triangle(const Triangle &t) {
+ void rst::Rasterizer::rasterize_wireframe(const Triangle &t) {
     auto v = t.toVector4();
 
     // TODO : Find out the bounding box of current triangle.
@@ -374,10 +425,11 @@ void rst::Rasterizer::set_pixel(const Eigen::Vector3f& point, const Eigen::Vecto
         if (insideTriangle(x, y, v)) { // 如果当前像素在三角形内
           float min_depth = FLT_MAX;
           if (SSAA) {
+            int index = 0;
             for (float i = 0.25; i < 1.0; i += 0.5) {
               for (float j = 0.25; j < 1.0; j += 0.5) {
                 // x2SSAA坐标
-				  auto [apha, beta, gamma] = computeBarycentric2D(x + i, y + j, t.v); // 重力坐标
+				  auto [apha, beta, gamma] = computeBarycentric2D(x + i, y + j, t.v); // xy是屏幕坐标, t是深度, a,b,g是重力坐标
                   float z_interpolated =
                       apha * v[0].z() / v[0].w() +
                       beta * v[1].z() / v[1].w() +
@@ -393,37 +445,20 @@ void rst::Rasterizer::set_pixel(const Eigen::Vector3f& point, const Eigen::Vecto
               index++;
             }
           } else {
-              if (insideTriangle(x, y, t.v))
+              auto [alpha, beta, gamma] = computeBarycentric2D(x, y, t.v);
+              float w_reciprocal = 1.0 / (alpha / v[0].w() + beta / v[1].w() + gamma / v[2].w());
+              float z_interpolated = alpha * v[0].z() / v[0].w() + beta * v[1].z() / v[1].w() + gamma * v[2].z() / v[2].w();
+              z_interpolated *= w_reciprocal;
+              min_depth = std::min(min_depth, z_interpolated);
+              if (min_depth < depth_buf[get_index(x, y)])
               {
-                  auto [alpha, beta, gamma] = computeBarycentric2D(x, y, t.v);
-                  float w_reciprocal = 1.0 / (alpha / v[0].w() + beta / v[1].w() + gamma / v[2].w());
-                  float z_interpolated = alpha * v[0].z() / v[0].w() + beta * v[1].z() / v[1].w() + gamma * v[2].z() / v[2].w();
-                  z_interpolated *= w_reciprocal;
-                  min_depth = std::min(min_depth, z_interpolated);
-                  if (min_depth < depth_buf[get_index(x, y)])
-                  {
-                      depth_buf[get_index(x, y)] = min_depth;
-                      Eigen::Vector3f point(x, y, 1.0f);
-                      set_pixel(point, t.getColor());
-                  }
+                  depth_buf[get_index(x, y)] = min_depth;
+                  Eigen::Vector3f point(x, y, 1.0f);
+                  set_pixel(point, t.getColor());
               }
           }
 
         }
       }
     }
-
-
-      // If so, use the following code to get the interpolated z value.
-      //auto[alpha, beta, gamma] = computeBarycentric2D(x, y, t.v);
-      //float w_reciprocal = 1.0/(alpha / v[0].w() + beta / v[1].w() + gamma / v[2].w());
-      //float z_interpolated = alpha * v[0].z() / v[0].w() + beta * v[1].z() / v[1].w() + gamma * v[2].z() / v[2].w();
-      //z_interpolated *= w_reciprocal;
-
-      // TODO : set the current pixel (use the set_pixel function) to the color of the triangle (use getColor function) if it should be painted.
-
-
-     // MVP变换
-     // 光栅化
-     // 贴图
    }

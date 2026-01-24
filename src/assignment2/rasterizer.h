@@ -28,9 +28,9 @@ enum class Primitive {
 };
 
 /*
- * For the curious : The draw function takes two buffer id's as its arguments.
- * These two structs make sure that if you mix up with their orders, the
- * compiler won't compile it. Aka : Type safety
+ * 说明：draw 函数接受多个缓冲区 ID 作为参数。
+ * 这些结构体确保如果你搞混了它们的顺序，编译器将无法编译通过。
+ * 这就是类型安全（Type safety）
  * */
 struct pos_buf_id {
     int pos_id = 0;
@@ -130,16 +130,15 @@ private:
 
   // ==================== 缓冲区 ====================
   std::map<int, std::vector<Eigen::Vector3f>> pos_buf; // 顶点位置缓冲区（ID → 顶点数组）
-  std::map<int, std::vector<Eigen::Vector3i>> ind_buf; // 顶点索引缓冲区（ID → 索引数组）
+  std::map<int, std::vector<Eigen::Vector3i>> ind_buf; // 顶点索引缓冲区（ID → 索引数组，i表示整数）
   std::map<int, std::vector<Eigen::Vector3f>> col_buf; // 顶点颜色缓冲区（ID → 颜色数组）
 
   std::vector<Eigen::Vector3f> frame_buf; // 帧缓冲区（存储每个像素的 RGB 颜色）
   std::vector<float> depth_buf;           // 深度缓冲区（存储每个像素的深度值，用于深度测试）
 
-  // SSAA Begin
-  std::vector<Eigen::Vector3f> frame_buf_2xSSAA;
+  // 超采样抗锯齿（2x2 SSAA，每个像素有4个子采样点）
+  std::vector<std::vector<Eigen::Vector3f>> frame_buf_2xSSAA;
   std::vector<std::vector<float>> depth_buf_2xSSAA;
-  // SSAA End
 
   /**
    * 获取像素在缓冲区中的索引（内部辅助函数）
