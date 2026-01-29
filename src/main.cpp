@@ -4,7 +4,7 @@
 
 // 声明 assignment2 的函数
 // 注意：函数定义在 src/assignment2/assignment2.cpp 中
-int assignment2(int argc, const char** argv);
+int assignment3(int argc, const char** argv);
 
 int main(int argc, char* argv[])
 {
@@ -19,7 +19,7 @@ int main(int argc, char* argv[])
     // cv::Mat image = cv::Mat::zeros(100, 100, CV_8UC3);
     // std::cout << "\nOpenCV 矩阵创建成功" << std::endl;
 
-    // 运行 Assignment 1
-    std::cout << "\n运行 Assignment 1..." << std::endl;
-    return assignment2(argc, const_cast<const char**>(argv));
+    // 运行 Assignment 3
+    std::cout << "\n运行 Assignment 3..." << std::endl;
+    return assignment3(argc, const_cast<const char**>(argv));
 }

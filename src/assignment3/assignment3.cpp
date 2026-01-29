@@ -271,90 +271,128 @@ Eigen::Vector3f texture_fragment_shader(const fragment_shader_payload& payload)
     return result_color * 255.f;
 }
 
+// 位移贴图片段着色器（Displacement Mapping Fragment Shader）
+// 位移贴图不仅修改法线方向（如凹凸贴图），还会实际改变顶点的位置，产生真实的几何细节
 Eigen::Vector3f displacement_fragment_shader(const fragment_shader_payload& payload)
 {
+    // ========== 材质属性定义 ==========
+    Eigen::Vector3f ka = Eigen::Vector3f(0.005, 0.005, 0.005);  // 环境光反射系数（ambient coefficient）
+    Eigen::Vector3f kd = payload.color;                          // 漫反射系数（diffuse coefficient），使用片段颜色
+    Eigen::Vector3f ks = Eigen::Vector3f(0.7937, 0.7937, 0.7937); // 镜面反射系数（specular coefficient）
 
-    Eigen::Vector3f ka = Eigen::Vector3f(0.005, 0.005, 0.005);
-    Eigen::Vector3f kd = payload.color;
-    Eigen::Vector3f ks = Eigen::Vector3f(0.7937, 0.7937, 0.7937);
+    // ========== 光源设置 ==========
+    auto l1 = light{ {20, 20, 20}, {500, 500, 500} };   // 光源1：位置(20,20,20)，强度(500,500,500)
+    auto l2 = light{ {-20, 20, 0}, {500, 500, 500} };   // 光源2：位置(-20,20,0)，强度(500,500,500)
 
-    auto l1 = light{ {20, 20, 20}, {500, 500, 500} };
-    auto l2 = light{ {-20, 20, 0}, {500, 500, 500} };
+    std::vector<light> lights = { l1, l2 };              // 光源列表
+    Eigen::Vector3f amb_light_intensity{ 10, 10, 10 };    // 环境光强度
+    Eigen::Vector3f eye_pos{ 0, 0, 10 };                  // 相机/观察者位置
 
-    std::vector<light> lights = { l1, l2 };
-    Eigen::Vector3f amb_light_intensity{ 10, 10, 10 };
-    Eigen::Vector3f eye_pos{ 0, 0, 10 };
+    float p = 150;  // 镜面反射高光的衰减指数（shininess），值越大高光越集中
 
-    float p = 150;
+    // ========== 从 payload 中获取片段信息 ==========
+    Eigen::Vector3f color = payload.color;    // 片段颜色
+    Eigen::Vector3f point = payload.view_pos;  // 片段在视图空间中的位置（后续会被位移修改）
+    Eigen::Vector3f normal = payload.normal;  // 片段法线向量（后续会被修改）
 
-    Eigen::Vector3f color = payload.color;
-    Eigen::Vector3f point = payload.view_pos;
-    Eigen::Vector3f normal = payload.normal;
+    // ========== 位移贴图参数 ==========
+    float kh = 0.2;  // 高度缩放系数（height scale），控制高度图的影响强度
+    float kn = 0.1;  // 位移缩放系数（displacement scale），控制实际位移的距离
 
-    float kh = 0.2, kn = 0.1;
-
-    // TODO: Implement displacement mapping here
-    // Let n = normal = (x, y, z)
-    // Vector t = (x*y/sqrt(x*x+z*z),sqrt(x*x+z*z),z*y/sqrt(x*x+z*z))
-    // Vector b = n cross product t
-    // Matrix TBN = [t b n]
-    // dU = kh * kn * (h(u+1/w,v)-h(u,v))
-    // dV = kh * kn * (h(u,v+1/h)-h(u,v))
-    // Vector ln = (-dU, -dV, 1)
-    // Position p = p + kn * n * h(u,v)
-    // Normal n = normalize(TBN * ln)
-
+    // ========== 位移贴图实现 ==========
+    // 步骤1：构建 TBN 矩阵（Tangent-Bitangent-Normal），用于在切线空间和世界空间之间转换
+    // 设法线 n = (x, y, z)
     float x = normal.x();
     float y = normal.y();
     float z = normal.z();
 
+    // 计算切线向量 t（tangent vector）
+    // 公式：t = (x*y/sqrt(x*x+z*z), sqrt(x*x+z*z), z*y/sqrt(x*x+z*z))
+    // 这是一个与法线垂直的向量，用于构建切线空间
     Eigen::Vector3f t = Eigen::Vector3f(x * y / std::sqrt(x * x + z * z), std::sqrt(x * x + z * z), z * y / std::sqrt(x * x + z * z));
+
+    // 计算副切线向量 b（bitangent vector）
+    // b = n × t（法线与切线的叉积），确保三个向量互相垂直
     Eigen::Vector3f b = normal.cross(t);
 
+    // 构建 TBN 矩阵：将切线空间的向量转换到世界空间
+    // TBN = [t, b, n]，每一列是一个基向量
     Eigen::Matrix3f TBN;
     TBN << t.x(), b.x(), normal.x(),
         t.y(), b.y(), normal.y(),
         t.z(), b.z(), normal.z();
 
-    float u = payload.tex_coords.x();
-    float v = payload.tex_coords.y();
-    float w = payload.texture->width;
-    float h = payload.texture->height;
+    // 步骤2：获取纹理坐标和纹理尺寸
+    float u = payload.tex_coords.x();              // 纹理坐标 u（水平方向）
+    float v = payload.tex_coords.y();              // 纹理坐标 v（垂直方向）
+    float w = payload.texture->width;              // 纹理宽度（像素）
+    float h = payload.texture->height;             // 纹理高度（像素）
 
+    // 步骤3：计算高度图的梯度（用于修改法线）
+    // dU：u 方向的梯度，通过采样相邻像素的高度差计算
+    // 公式：dU = kh * kn * (h(u+1/w, v) - h(u, v))
+    // 其中 h(u,v) 是高度图中 (u,v) 位置的高度值（通过纹理颜色的范数获取）
     float dU = kh * kn * (payload.texture->getColor(u + 1.0f / w, v).norm() - payload.texture->getColor(u, v).norm());
+
+    // dV：v 方向的梯度，通过采样相邻像素的高度差计算
+    // 公式：dV = kh * kn * (h(u, v+1/h) - h(u, v))
     float dV = kh * kn * (payload.texture->getColor(u, v + 1.0f / h).norm() - payload.texture->getColor(u, v).norm());
 
+    // 步骤4：计算切线空间中的新法线向量
+    // ln = (-dU, -dV, 1)，负号是因为法线指向高度增加的方向
     Eigen::Vector3f ln = Eigen::Vector3f(-dU, -dV, 1.0f);
 
+    // 步骤5：根据高度图实际位移顶点位置（这是位移贴图与凹凸贴图的关键区别）
+    // 公式：p = p + kn * n * h(u,v)
+    // 沿着法线方向移动顶点，移动距离由高度图的值和 kn 系数决定
     point += (kn * normal * payload.texture->getColor(u, v).norm());
 
+    // 步骤6：将切线空间的新法线转换到世界空间，并归一化
+    // 公式：n = normalize(TBN * ln)
+    // 通过 TBN 矩阵将切线空间的法线转换到世界空间
     normal = (TBN * ln).normalized();
 
-    Eigen::Vector3f result_color = { 0, 0, 0 };
+    // ========== Blinn-Phong 光照计算 ==========
+    Eigen::Vector3f result_color = { 0, 0, 0 };  // 初始化最终颜色为黑色
 
+    // 遍历所有光源，累加每个光源的贡献
     for (auto& light : lights)
     {
-        // TODO: For each light source in the code, calculate what the *ambient*, *diffuse*, and *specular*
-        // components are. Then, accumulate that result on the *result_color* object.
+        // 计算关键方向向量（单位向量）
+        // 注意：这里使用的是位移后的 point 和修改后的 normal
+        Eigen::Vector3f light_dir = (light.position - point).normalized();  // 从片段指向光源的方向
+        Eigen::Vector3f view_dir = (eye_pos - point).normalized();          // 从片段指向观察者的方向
+        Eigen::Vector3f half_dir = (light_dir + view_dir).normalized();     // 半角向量（Blinn-Phong 使用）
 
-        Eigen::Vector3f light_dir = (light.position - point).normalized();
-        Eigen::Vector3f view_dir = (eye_pos - point).normalized();
-        Eigen::Vector3f half_dir = (light_dir + view_dir).normalized();
-
+        // ========== 环境光分量 (Ambient) ==========
+        // La = ka * I_ambient
+        // 环境光不依赖于视角和光源方向，提供基础照明
         Eigen::Vector3f La = ka.cwiseProduct(amb_light_intensity);
 
-        float r2 = (light.position - point).dot(light.position - point);
-        Eigen::Vector3f I_r2 = light.intensity / r2;
+        // ========== 计算距离衰减 ==========
+        // 根据平方反比定律计算光强衰减：I' = I / r²
+        float r2 = (light.position - point).dot(light.position - point);  // 距离的平方
+        Eigen::Vector3f I_r2 = light.intensity / r2;                      // 衰减后的光强
 
-        Eigen::Vector3f Ld = kd.cwiseProduct(I_r2);
-        Ld *= std::max(0.0f, normal.normalized().dot(light_dir));
+        // ========== 漫反射分量 (Diffuse) ==========
+        // Ld = kd * (I / r²) * max(0, N·L)
+        // 漫反射遵循 Lambert 定律，与法线和光源方向的夹角余弦成正比
+        Eigen::Vector3f Ld = kd.cwiseProduct(I_r2);  // 基础漫反射颜色
+        Ld *= std::max(0.0f, normal.normalized().dot(light_dir));  // 乘以法线与光源方向的点积（Lambert 项）
 
-        Eigen::Vector3f Ls = ks.cwiseProduct(I_r2);
-        Ls *= std::pow(std::max(0.0f, normal.normalized().dot(half_dir)), p);
+        // ========== 镜面反射分量 (Specular) ==========
+        // Ls = ks * (I / r²) * max(0, N·H)^p
+        // 使用 Blinn-Phong 模型：使用半角向量 H 代替反射向量 R，计算更高效
+        // p 是衰减指数，控制高光的集中程度
+        Eigen::Vector3f Ls = ks.cwiseProduct(I_r2);  // 基础镜面反射颜色
+        Ls *= std::pow(std::max(0.0f, normal.normalized().dot(half_dir)), p);  // 半角向量的点积的 p 次方
 
+        // ========== 累加所有光照分量 ==========
+        // 最终颜色 = 环境光 + 漫反射 + 镜面反射
         result_color += (La + Ld + Ls);
     }
 
+    // 将颜色值从 [0, 1] 范围转换到 [0, 255] 范围并返回
     return result_color * 255.f;
 }
 
@@ -419,7 +457,7 @@ Eigen::Vector3f bump_fragment_shader(const fragment_shader_payload& payload)
     return result_color * 255.f;
 }
 
-int assignment2(int argc, const char** argv)
+int assignment3(int argc, const char** argv)
 {
     std::vector<Triangle *> TriangleList;
 
@@ -428,10 +466,11 @@ int assignment2(int argc, const char** argv)
 
     std::string filename = "output.png";
     objl::Loader Loader;
-    std::string obj_path = "../models/spot/";
+    std::string obj_path = "../resources/models/spot/";
 
     // Load .obj File
-    bool loadout = Loader.LoadFile("../models/spot/spot_triangulated_good.obj");
+    bool loadout = Loader.LoadFile("../resources/models/spot/spot_triangulated_good.obj");
+
     for (auto mesh : Loader.LoadedMeshes)
     {
         for (int i = 0; i < mesh.Vertices.size(); i += 3)
@@ -439,15 +478,18 @@ int assignment2(int argc, const char** argv)
             Triangle *t = new Triangle();
             for (int j = 0; j < 3; j++)
             {
-                t->setVertex(j, Vector4f(mesh.Vertices[i + j].Position.X, mesh.Vertices[i + j].Position.Y, mesh.Vertices[i + j].Position.Z, 1.0));
+                // setVertex 需要 Vector3f，从 Vector4f 中提取前三个分量
+                Vector4f v4 = Vector4f(mesh.Vertices[i + j].Position.X, mesh.Vertices[i + j].Position.Y, mesh.Vertices[i + j].Position.Z, 1.0);
+                t->setVertex(j, Vector3f(v4.x(), v4.y(), v4.z()));
                 t->setNormal(j, Vector3f(mesh.Vertices[i + j].Normal.X, mesh.Vertices[i + j].Normal.Y, mesh.Vertices[i + j].Normal.Z));
-                t->setTexCoord(j, Vector2f(mesh.Vertices[i + j].TextureCoordinate.X, mesh.Vertices[i + j].TextureCoordinate.Y));
+                // setTexCoord 需要三个参数：索引、s坐标、t坐标
+                t->setTexCoord(j, mesh.Vertices[i + j].TextureCoordinate.X, mesh.Vertices[i + j].TextureCoordinate.Y);
             }
             TriangleList.push_back(t);
         }
     }
 
-    rst::rasterizer r(700, 700);
+    rst::Rasterizer r(700, 700);
 
     auto texture_path = "hmap.jpg";
     r.set_texture(Texture(obj_path + texture_path));

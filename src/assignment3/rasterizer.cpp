@@ -45,11 +45,11 @@ rst::col_buf_id rst::Rasterizer::load_colors(const std::vector<Eigen::Vector3f> 
     return {id};
 }
 
-col_buf_id rst::Rasterizer::load_normals(const std::vector<Eigen::Vector3f>& normals)
+rst::col_buf_id rst::Rasterizer::load_normals(const std::vector<Eigen::Vector3f>& normals)
 {
 	auto id = get_next_id();
 	nor_buf.emplace(id, normals);
-    return col_buf_id();
+    return rst::col_buf_id{id};
 }
 
 auto to_vec4(const Eigen::Vector3f& v3, float w = 1.0f) {
@@ -130,9 +130,9 @@ static bool insideTriangle(int x, int y, const std::array<Vector4f, 3>& v) {
              vert.z() = vert.z() * f1 + f2; // z映射到深度缓冲的 [near, far], 取值为0.1到50
          }
 
-         for (int i = 0; i < 3; ++i)
+         for (int j = 0; j < 3; ++j)
          {
-             t.setVertex(i, v[i].head<3>()); // 设置三角形第i个顶点的坐标
+             t.setVertex(j, v[j].head<3>()); // 设置三角形第j个顶点的坐标
          }
 
 
@@ -144,7 +144,10 @@ static bool insideTriangle(int x, int y, const std::array<Vector4f, 3>& v) {
          t.setColor(1, col_y[0], col_y[1], col_y[2]);
          t.setColor(2, col_z[0], col_z[1], col_z[2]);
 
-         rasterize_wireframe(t);
+         // 绘制线框：使用 draw_line 绘制三角形的三条边
+         draw_line(t.v[0], t.v[1]);
+         draw_line(t.v[1], t.v[2]);
+         draw_line(t.v[2], t.v[0]);
      }
  }
 
@@ -160,9 +163,9 @@ static bool insideTriangle(int x, int y, const std::array<Vector4f, 3>& v) {
          Triangle newtri = *t;
 
          std::array<Eigen::Vector4f, 3> mm{ // 这一步得到了世界坐标
-             (view * model * t->v[0]),
-             (view * model * t->v[1]),
-             (view * model * t->v[2]) };
+             (view * model * to_vec4(t->v[0], 1.0f)),
+             (view * model * to_vec4(t->v[1], 1.0f)),
+             (view * model * to_vec4(t->v[2], 1.0f)) };
 
          std::array<Eigen::Vector3f, 3> viewspace_pos;
 
@@ -171,9 +174,9 @@ static bool insideTriangle(int x, int y, const std::array<Vector4f, 3>& v) {
              });
 
 		 Eigen::Vector4f v[] = { // 投影空间坐标
-             mvp * t->v[0],
-             mvp * t->v[1],
-             mvp * t->v[2] };
+             mvp * to_vec4(t->v[0], 1.0f),
+             mvp * to_vec4(t->v[1], 1.0f),
+             mvp * to_vec4(t->v[2], 1.0f) };
 
 		 //Homogeneous division 透视除法.转为NDC坐标
          for (auto& vec : v)
@@ -199,8 +202,8 @@ static bool insideTriangle(int x, int y, const std::array<Vector4f, 3>& v) {
 
          for (int i = 0; i < 3; ++i)
          {
-             //screen space coordinates
-             newtri.setVertex(i, v[i]);
+             //screen space coordinates - setVertex 需要 Vector3f，从 Vector4f 提取前三个分量
+             newtri.setVertex(i, v[i].head<3>());
          }
 
          for (int i = 0; i < 3; ++i)
@@ -215,7 +218,8 @@ static bool insideTriangle(int x, int y, const std::array<Vector4f, 3>& v) {
 
          // Also pass view space vertice position
          rasterize_triangle(newtri, viewspace_pos);
- }
+     }
+}
 
 /**
  * Bresenham 线段绘制算法
@@ -551,7 +555,7 @@ static std::tuple<float, float, float> computeBarycentric2D(float x, float y, co
                   payload.view_pos = interpolated_shadingcoords;
                   auto pixel_color = fragment_shader(payload);
                   depth_buf[get_index(x, y)] = min_depth;
-                  Eigen::Vector2i point(x, y);
+                  Eigen::Vector3f point(x, y, min_depth);
                   set_pixel(point, pixel_color);
               }
           }

@@ -66,11 +66,11 @@ endif()
 # 将源代码添加到此项目的可执行文件。
 add_executable (games101
     "src/main.cpp"
-    "src/assignment2/assignment2.cpp"
-    "src/assignment2/Triangle.cpp"
-    "src/assignment2/rasterizer.cpp"
-    "src/assignment2/rasterizer.h"
-    "src/assignment2/Triangle.h"
+    "src/assignment3/assignment3.cpp"
+    "src/assignment3/Triangle.cpp"
+    "src/assignment3/rasterizer.cpp"
+    "src/assignment3/rasterizer.h"
+    "src/assignment3/Triangle.h"
 )
 
 if (CMAKE_VERSION VERSION_GREATER 3.12)
