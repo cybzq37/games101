@@ -6,7 +6,7 @@
             "type": "lldb",
             "request": "launch",
             "program": "${workspaceFolder}/build/games101.exe",
-            "args": [],
+            "args": ["output.png", "bump"],
             "cwd": "${workspaceFolder}/build",
             "env": {
                 "PATH": "${workspaceFolder}/build;${env:PATH}",

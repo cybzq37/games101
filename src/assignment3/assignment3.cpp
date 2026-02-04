@@ -18,7 +18,7 @@
 #include "OBJ_Loader.h"
 
 /* 模型变换 */
-Eigen::Matrix4f get_model_matrix(float rotation_angle) // 旋转矩阵（绕z轴旋转）
+Eigen::Matrix4f get_model_matrix(float rotation_angle)
 {
     Eigen::Matrix4f rotation;
     float angle = rotation_angle * MY_PI / 180.f;
@@ -215,29 +215,31 @@ Eigen::Vector3f phong_fragment_shader(const fragment_shader_payload& payload)
     return result_color * 255.f;
 }
 
+// 纹理贴图片段着色器（Texture Mapping Fragment Shader）
 Eigen::Vector3f texture_fragment_shader(const fragment_shader_payload& payload)
 {
     Eigen::Vector3f return_color = { 0, 0, 0 };
     if (payload.texture)
     {
         // TODO: Get the texture value at the texture coordinates of the current fragment
-        return_color = payload.texture->getColor(payload.tex_coords.x(), payload.tex_coords.y());
+		return_color = payload.texture->getColor(payload.tex_coords.x(), payload.tex_coords.y());
     }
     Eigen::Vector3f texture_color;
     texture_color << return_color.x(), return_color.y(), return_color.z();
 
-    Eigen::Vector3f ka = Eigen::Vector3f(0.005, 0.005, 0.005);
-    Eigen::Vector3f kd = texture_color / 255.f;
-    Eigen::Vector3f ks = Eigen::Vector3f(0.7937, 0.7937, 0.7937);
-
+	Eigen::Vector3f ka = Eigen::Vector3f(0.005, 0.005, 0.005);    // 环境光反射系数（ambient coefficient）
+	Eigen::Vector3f kd = texture_color / 255.f;                   // 漫反射系数（diffuse coefficient）
+	Eigen::Vector3f ks = Eigen::Vector3f(0.7937, 0.7937, 0.7937); // 高光反射系数（specular coefficient）
+    
+    // 定义两个光源
     auto l1 = light{ {20, 20, 20}, {500, 500, 500} };
     auto l2 = light{ {-20, 20, 0}, {500, 500, 500} };
 
     std::vector<light> lights = { l1, l2 };
-    Eigen::Vector3f amb_light_intensity{ 10, 10, 10 };
-    Eigen::Vector3f eye_pos{ 0, 0, 10 };
+    Eigen::Vector3f amb_light_intensity{ 10, 10, 10 };  // 环境光强度
+	Eigen::Vector3f eye_pos{ 0, 0, 10 };                // 观察者位置
 
-    float p = 150;
+	float p = 150; // 高光衰减指数
 
     Eigen::Vector3f color = texture_color;
     Eigen::Vector3f point = payload.view_pos;
@@ -250,11 +252,11 @@ Eigen::Vector3f texture_fragment_shader(const fragment_shader_payload& payload)
         // TODO: For each light source in the code, calculate what the *ambient*, *diffuse*, and *specular*
         // components are. Then, accumulate that result on the *result_color* object.
 
-        Eigen::Vector3f light_dir = (light.position - point).normalized();
-        Eigen::Vector3f view_dir = (eye_pos - point).normalized();
-        Eigen::Vector3f half_dir = (light_dir + view_dir).normalized();
+		Eigen::Vector3f light_dir = (light.position - point).normalized();  // 光源方向
+		Eigen::Vector3f view_dir = (eye_pos - point).normalized();          // 视线方向
+		Eigen::Vector3f half_dir = (light_dir + view_dir).normalized();     // 半角向量
 
-        Eigen::Vector3f La = ka.cwiseProduct(amb_light_intensity);
+		Eigen::Vector3f La = ka.cwiseProduct(amb_light_intensity);     // 环境光分量
 
         float r2 = (light.position - point).dot(light.position - point);
         Eigen::Vector3f I_r2 = light.intensity / r2;
@@ -396,13 +398,15 @@ Eigen::Vector3f displacement_fragment_shader(const fragment_shader_payload& payl
     return result_color * 255.f;
 }
 
+// 凹凸贴图片段着色器（Bump Mapping Fragment Shader）
 Eigen::Vector3f bump_fragment_shader(const fragment_shader_payload& payload)
 {
-
+    // 材质属性
     Eigen::Vector3f ka = Eigen::Vector3f(0.005, 0.005, 0.005);
     Eigen::Vector3f kd = payload.color;
     Eigen::Vector3f ks = Eigen::Vector3f(0.7937, 0.7937, 0.7937);
 
+    // 光源
     auto l1 = light{ {20, 20, 20}, {500, 500, 500} };
     auto l2 = light{ {-20, 20, 0}, {500, 500, 500} };
 
@@ -416,7 +420,9 @@ Eigen::Vector3f bump_fragment_shader(const fragment_shader_payload& payload)
     Eigen::Vector3f point = payload.view_pos;
     Eigen::Vector3f normal = payload.normal;
 
-    float kh = 0.2, kn = 0.1;
+    // ========== 位移贴图参数 ==========
+    float kh = 0.2;  // 高度缩放系数（height scale），控制高度图的影响强度
+    float kn = 0.1;  // 位移缩放系数（displacement scale），控制实际位移的距离
 
     // TODO: Implement bump mapping here
     // Let n = normal = (x, y, z)
@@ -428,19 +434,25 @@ Eigen::Vector3f bump_fragment_shader(const fragment_shader_payload& payload)
     // Vector ln = (-dU, -dV, 1)
     // Normal n = normalize(TBN * ln)
 
+	// 步骤1：构建 TBN 矩阵（Tangent-Bitangent-Normal）
+	// 表面原始法线 n = (x, y, z)
     float x = normal.x();
     float y = normal.y();
     float z = normal.z();
 
+	// 计算切线向量 t（tangent vector）
+    // 定义纹理 U 方向在三维空间里指向哪里, 没有 t，法线贴图 / 高度图根本不知道该往哪个方向“倾斜”
     Eigen::Vector3f t = Eigen::Vector3f(x * y / std::sqrt(x * x + z * z), std::sqrt(x * x + z * z), z * y / std::sqrt(x * x + z * z));
+	// 计算副切线向量 b（bitangent vector）
     Eigen::Vector3f b = normal.cross(t);
 
+	// 构建 TBN 矩阵
     Eigen::Matrix3f TBN;
     TBN << t.x(), b.x(), normal.x(),
-        t.y(), b.y(), normal.y(),
-        t.z(), b.z(), normal.z();
+           t.y(), b.y(), normal.y(),
+           t.z(), b.z(), normal.z();
 
-    float u = payload.tex_coords.x();
+    float u = payload.tex_coords.x(); // 重心坐标
     float v = payload.tex_coords.y();
     float w = payload.texture->width;
     float h = payload.texture->height;
@@ -461,7 +473,7 @@ int assignment3(int argc, const char** argv)
 {
     std::vector<Triangle *> TriangleList;
 
-    float angle = 140.0;
+    float angle = 15.0;
     bool command_line = false;
 
     std::string filename = "output.png";

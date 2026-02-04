@@ -66,11 +66,16 @@ endif()
 # 将源代码添加到此项目的可执行文件。
 add_executable (games101
     "src/main.cpp"
-    "src/assignment3/assignment3.cpp"
-    "src/assignment3/Triangle.cpp"
-    "src/assignment3/rasterizer.cpp"
-    "src/assignment3/rasterizer.h"
-    "src/assignment3/Triangle.h"
+    "src/assignment5/main.cpp"
+    "src/assignment5/Object.cpp"
+    "src/assignment5/Vector.cpp"
+    "src/assignment5/Sphere.hpp"
+    "src/assignment5/global.hpp"
+    "src/assignment5/Triangle.hpp"
+    "src/assignment5/Scene.cpp"
+    "src/assignment5/Scene.hpp"
+    "src/assignment5/Light.hpp"
+    "src/assignment5/Renderer.cpp"
 )
 
 if (CMAKE_VERSION VERSION_GREATER 3.12)
