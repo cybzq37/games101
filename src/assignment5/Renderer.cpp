@@ -4,12 +4,13 @@
 #include "Scene.hpp"
 #include <optional>
 
+// 将角度转换为弧度
 inline float deg2rad(const float &deg)
 {
     return deg * M_PI / 180.0;
 }
 
-// Compute reflection direction
+// 计算反射方向
 Vector3f reflect(const Vector3f &I, const Vector3f &N)
 {
     return I - 2 * dotProduct(I, N) * N;
@@ -21,30 +22,51 @@ Vector3f reflect(const Vector3f &I, const Vector3f &N)
 // We need to handle with care the two possible situations:
 //
 //    - When the ray is inside the object
-//
 //    - When the ray is outside.
 //
 // If the ray is outside, you need to make cosi positive cosi = -N.I
-//
-// If the ray is inside, you need to invert the refractive indices and negate the normal N
+// If the ray is inside, you need to invert the refractive indices and negate
+// the normal N
 // [/comment]
+// 使用斯涅尔定律计算折射方向
+// 参数说明：
+// - const Vector3f &I: 入射方向
+// - const Vector3f &N: 法线
+// - const float &ior: 折射率
+// 返回值：
+// - Vector3f: 折射方向
+// 计算过程：
+// 1. 计算入射方向与法线的点积
+// 2. 计算折射率
+// 3. 计算折射方向
+// 4. 返回折射方向
 Vector3f refract(const Vector3f &I, const Vector3f &N, const float &ior)
 {
-    float cosi = clamp(-1, 1, dotProduct(I, N));
-    float etai = 1, etat = ior;
-    Vector3f n = N;
+    float cosi = clamp(-1, 1, dotProduct(I, N)); // 计算入射方向与法线的点积，并限制在[-1, 1]之间
+
+    // etai 表示入射介质（incident medium）的折射率
+    // etat 表示透射介质（transmission medium）的折射率
+    // 光从空气进入玻璃时：etai = 1（空气），etat = ior（物体的折射率）
+    // 光从物体内部射向空气时：etai = ior，etat = 1
+    float etai = 1.0f;  // 入射介质的折射率（通常为空气，设为1）
+    float etat = ior;   // 透射介质的折射率（物体自身的折射率）
+
+    Vector3f n = N; // 初始化法线
+
     if (cosi < 0)
     {
-        cosi = -cosi;
+        // 光线在物体外部（从空气射向物体）
+        cosi = -cosi; // 取正值
     }
     else
     {
-        std::swap(etai, etat);
-        n = -N;
+        // 光线在物体内部（从物体射向空气）
+        std::swap(etai, etat); // 交换折射率，使得入射介质和透射介质顺序正确
+        n = -N; // 法线取反
     }
-    float eta = etai / etat;
-    float k = 1 - eta * eta * (1 - cosi * cosi);
-    return k < 0 ? 0 : eta * I + (eta * cosi - sqrtf(k)) * n;
+    float eta = etai / etat; // 计算相对折射率
+    float k = 1 - eta * eta * (1 - cosi * cosi); // 计算折射方向是否存在（k<0表示全反射）
+    return k < 0 ? 0 : eta * I + (eta * cosi - sqrtf(k)) * n; // 返回折射方向
 }
 
 // [comment]
@@ -56,28 +78,41 @@ Vector3f refract(const Vector3f &I, const Vector3f &N, const float &ior)
 //
 // \param ior is the material refractive index
 // [/comment]
+
+// 计算菲涅尔方程
+// 参数说明：
+// - const Vector3f &I: 入射方向
+// - const Vector3f &N: 法线
+// - const float &ior: 折射率
+// 返回值：
+// - float: 菲涅尔方程的值
+// 计算过程：
+// 1. 计算入射方向与法线的点积
+// 2. 计算折射率
+// 3. 计算菲涅尔方程的值
+// 4. 返回菲涅尔方程的值
 float fresnel(const Vector3f &I, const Vector3f &N, const float &ior)
 {
-    float cosi = clamp(-1, 1, dotProduct(I, N));
-    float etai = 1, etat = ior;
+    float cosi = clamp(-1, 1, dotProduct(I, N)); // 计算入射方向与法线的点积，并限制在[-1, 1]之间
+    float etai = 1, etat = ior; // 初始化折射率
     if (cosi > 0)
     {
-        std::swap(etai, etat);
+        std::swap(etai, etat); // 交换折射率，使得入射介质和透射介质顺序正确
     }
     // Compute sini using Snell's law
-    float sint = etai / etat * sqrtf(std::max(0.f, 1 - cosi * cosi));
+    float sint = etai / etat * sqrtf(std::max(0.f, 1 - cosi * cosi)); // 计算折射方向是否存在（sint>=1表示全反射）
     // Total internal reflection
-    if (sint >= 1)
+    if (sint >= 1) // 如果折射方向不存在，则返回1
     {
-        return 1;
+        return 1; // 返回1，表示全反射
     }
     else
     {
-        float cost = sqrtf(std::max(0.f, 1 - sint * sint));
+        float cost = sqrtf(std::max(0.f, 1 - sint * sint)); // 计算折射方向是否存在（cost<0表示全反射）
         cosi = fabsf(cosi);
-        float Rs = ((etat * cosi) - (etai * cost)) / ((etat * cosi) + (etai * cost));
-        float Rp = ((etai * cosi) - (etat * cost)) / ((etai * cosi) + (etat * cost));
-        return (Rs * Rs + Rp * Rp) / 2;
+        float Rs = ((etat * cosi) - (etai * cost)) / ((etat * cosi) + (etai * cost)); // 计算反射光的强度
+        float Rp = ((etai * cosi) - (etat * cost)) / ((etai * cosi) + (etat * cost)); // 计算折射光的强度
+        return (Rs * Rs + Rp * Rp) / 2; // 返回反射和折射光的强度
     }
     // As a consequence of the conservation of energy, transmittance is given by:
     // kt = 1 - kr;
@@ -90,34 +125,54 @@ float fresnel(const Vector3f &I, const Vector3f &N, const float &ior)
 // \param dir is the ray direction
 // \param objects is the list of objects the scene contains
 // \param[out] tNear contains the distance to the cloesest intersected object.
-// \param[out] index stores the index of the intersect triangle if the interesected object is a mesh.
-// \param[out] uv stores the u and v barycentric coordinates of the intersected point
-// \param[out] *hitObject stores the pointer to the intersected object (used to retrieve material information, etc.)
-// \param isShadowRay is it a shadow ray. We can return from the function sooner as soon as we have found a hit.
+// \param[out] index stores the index of the intersect triangle if the
+// interesected object is a mesh.
+// \param[out] uv stores the u and v barycentric coordinates of the intersected
+// point
+// \param[out] *hitObject stores the pointer to the intersected object (used to
+// retrieve material information, etc.)
+// \param isShadowRay is it a shadow ray. We can return from the function sooner
+// as soon as we have found a hit.
 // [/comment]
+
+// 追踪光线与物体相交
+// 参数说明：
+// - const Vector3f &orig: 光线起点
+// - const Vector3f &dir: 光线方向
+// - const std::vector<std::unique_ptr<Object>> &objects: 物体列表
+// 返回值：
+// - std::optional<hit_payload>: 光线与物体相交的信息
+// 计算过程：
+// 1. 初始化距离为无穷大
+// 2. 遍历物体列表
+// 3. 计算光线与物体相交的距离
+// 4. 更新光线与物体相交的距离
+// 5. 返回光线与物体相交的信息
 std::optional<hit_payload> trace(
     const Vector3f &orig, const Vector3f &dir,
     const std::vector<std::unique_ptr<Object>> &objects)
 {
-    float tNear = kInfinity;
-    std::optional<hit_payload> payload;
+    float tNear = kInfinity; // 初始化距离为无穷大
+    std::optional<hit_payload> payload; // 初始化光线与物体相交的信息
     for (const auto &object : objects)
     {
-        float tNearK = kInfinity;
-        uint32_t indexK;
-        Vector2f uvK;
-        if (object->intersect(orig, dir, tNearK, indexK, uvK) && tNearK < tNear)
+        float tNearK = kInfinity; // 初始化距离为无穷大
+        uint32_t indexK; // 初始化物体索引
+        Vector2f uvK; // 初始化纹理坐标
+        if (object->intersect(orig, dir, tNearK, indexK, uvK) && tNearK < tNear) // 如果光线与物体相交，并且交点距离小于当前交点距离
         {
-            payload.emplace();
-            payload->hit_obj = object.get();
-            payload->tNear = tNearK;
-            payload->index = indexK;
-            payload->uv = uvK;
-            tNear = tNearK;
+            // emplace 的作用是「就地构造」optional/hit_payload 对象，将其变为有效状态，而无需先创建临时对象再赋值，提高效率。
+            // 这里等价于 payload = hit_payload{}，但 emplace 用于可选类型或容器时效率更高，也可以传递构造参数。
+            payload.emplace(); // 就地初始化 payload
+            payload->hit_obj = object.get(); // 设置光线与物体相交的物体
+            payload->tNear = tNearK; // 设置光线与物体相交的距离
+            payload->index = indexK; // 设置光线与物体相交的物体索引
+            payload->uv = uvK; // 设置光线与物体相交的纹理坐标
+            tNear = tNearK; // 设置光线与物体相交的距离
         }
     }
 
-    return payload;
+    return payload; // 返回光线与物体相交的信息
 }
 
 // [comment]
@@ -136,41 +191,78 @@ std::optional<hit_payload> trace(
 // If the surface is diffuse/glossy we use the Phong illumation model to compute the color
 // at the intersection point.
 // [/comment]
+
+// Whitted-style光线追踪
+// 参数说明：
+// - const Vector3f &orig: 光线起点
+// - const Vector3f &dir: 光线方向
+// - const Scene &scene: 场景
+// - int depth: 光线深度
+// 返回值：
+// - Vector3f: 光线颜色
+// 计算过程：
+// 1. 如果光线深度大于最大深度，则返回背景颜色
+// 2. 初始化光线颜色为背景颜色
+// 3. 计算光线与物体相交的信息
+// 4. 计算光线与物体相交的点
+// 5. 计算光线与物体相交的法线
+// 6. 计算光线与物体相交的纹理坐标
+// 7. 根据物体材质类型计算光线颜色
+// 8. 返回光线颜色
 Vector3f castRay(
     const Vector3f &orig, const Vector3f &dir, const Scene &scene,
     int depth)
 {
-    if (depth > scene.maxDepth)
+    if (depth > scene.maxDepth) // 如果光线深度大于最大深度，则返回背景颜色
     {
-        return Vector3f(0.0, 0.0, 0.0);
+        return Vector3f(0.0, 0.0, 0.0); // 返回背景颜色
     }
 
-    Vector3f hitColor = scene.backgroundColor;
+    Vector3f hitColor = scene.backgroundColor; // 初始化光线颜色为背景颜色
+    // 这是 C++17 的 if 语句加强语法，称为 "if 带初始化语句（if with initializer statement）"。
+    // auto payload = trace(orig, dir, scene.get_objects()) 在 if 作用域内部定义并初始化变量 payload，
+    // 并在 payload 有值（即 payload 转换为 true，通常是 std::optional、智能指针等可判断真假类型）时进入 if 块。
     if (auto payload = trace(orig, dir, scene.get_objects()); payload)
     {
-        Vector3f hitPoint = orig + dir * payload->tNear;
-        Vector3f N;  // normal
-        Vector2f st; // st coordinates
-        payload->hit_obj->getSurfaceProperties(hitPoint, dir, payload->index, payload->uv, N, st);
-        switch (payload->hit_obj->materialType)
+        Vector3f hitPoint = orig + dir * payload->tNear; // 计算光线与物体相交的点
+        Vector3f N;  // 法线
+        Vector2f st; // 交点纹理坐标
+        payload->hit_obj->getSurfaceProperties(hitPoint, dir, payload->index, payload->uv, N, st); // 计算光线与物体相交的法线
+        switch (payload->hit_obj->materialType) // 根据物体材质类型计算光线颜色
         {
-        case REFLECTION_AND_REFRACTION:
+        case REFLECTION_AND_REFRACTION: // 反射和折射
         {
-            Vector3f reflectionDirection = normalize(reflect(dir, N));
-            Vector3f refractionDirection = normalize(refract(dir, N, payload->hit_obj->ior));
-            Vector3f reflectionRayOrig = (dotProduct(reflectionDirection, N) < 0) ? hitPoint - N * scene.epsilon : hitPoint + N * scene.epsilon;
-            Vector3f refractionRayOrig = (dotProduct(refractionDirection, N) < 0) ? hitPoint - N * scene.epsilon : hitPoint + N * scene.epsilon;
+            Vector3f reflectionDirection = normalize(reflect(dir, N)); // 计算反射方向
+            Vector3f refractionDirection = normalize(
+                refract(dir, N, payload->hit_obj->ior)); // 计算折射方向
+            // 计算反射的起点
+            Vector3f reflectionRayOrig =
+                (dotProduct(reflectionDirection, N) < 0)
+                    ? hitPoint - N * scene.epsilon
+                    : hitPoint + N * scene.epsilon;
+            // 计算折射的起点
+            Vector3f refractionRayOrig =
+                (dotProduct(refractionDirection, N) < 0)
+                    ? hitPoint - N * scene.epsilon
+                    : hitPoint + N * scene.epsilon;
+            // 计算反射的颜色
             Vector3f reflectionColor = castRay(reflectionRayOrig, reflectionDirection, scene, depth + 1);
-            Vector3f refractionColor = castRay(refractionRayOrig, refractionDirection, scene, depth + 1);
+            // 计算折射的颜色
+            Vector3f refractionColor = castRay(
+                refractionRayOrig, refractionDirection, scene, depth + 1);
+            // 计算菲涅尔方程
             float kr = fresnel(dir, N, payload->hit_obj->ior);
+            // 计算反射和折射的颜色
             hitColor = reflectionColor * kr + refractionColor * (1 - kr);
             break;
         }
-        case REFLECTION:
-        {
+        case REFLECTION: {
+            // 计算菲涅尔方程
             float kr = fresnel(dir, N, payload->hit_obj->ior);
-            Vector3f reflectionDirection = reflect(dir, N);
+            Vector3f reflectionDirection = reflect(dir, N); // 计算反射方向
+            // 计算反射的起点
             Vector3f reflectionRayOrig = (dotProduct(reflectionDirection, N) < 0) ? hitPoint + N * scene.epsilon : hitPoint - N * scene.epsilon;
+            // 计算反射的颜色
             hitColor = castRay(reflectionRayOrig, reflectionDirection, scene, depth + 1) * kr;
             break;
         }
@@ -180,38 +272,43 @@ Vector3f castRay(
             // We use the Phong illumation model int the default case. The phong model
             // is composed of a diffuse and a specular reflection component.
             // [/comment]
+            // 计算漫反射和镜面反射的强度
             Vector3f lightAmt = 0, specularColor = 0;
+            // 计算阴影的起点
+            // 这个公式的含义是：如果光线方向与法线方向的点积小于0，则阴影点在物体内部，否则阴影点在物体外部
             Vector3f shadowPointOrig = (dotProduct(dir, N) < 0) ? hitPoint + N * scene.epsilon : hitPoint - N * scene.epsilon;
             // [comment]
             // Loop over all lights in the scene and sum their contribution up
             // We also apply the lambert cosine law
             // [/comment]
-            for (auto &light : scene.get_lights())
+            // 遍历所有光源，计算漫反射和镜面反射的强度
+            // 计算漫反射和镜面反射的强度
+            for (auto &light : scene.get_lights()) // 遍历所有光源，计算漫反射和镜面反射的强度
             {
-                Vector3f lightDir = light->position - hitPoint;
+                Vector3f lightDir = light->position - hitPoint; // 计算光源方向
                 // square of the distance between hitPoint and the light
-                float lightDistance2 = dotProduct(lightDir, lightDir);
-                lightDir = normalize(lightDir);
-                float LdotN = std::max(0.f, dotProduct(lightDir, N));
+                float lightDistance2 = dotProduct(lightDir, lightDir); // 计算光源距离的平方
+                lightDir = normalize(lightDir); // 计算光源方向
+                float LdotN = std::max(0.f, dotProduct(lightDir, N)); // 计算光源方向与法线方向的点积
                 // is the point in shadow, and is the nearest occluding object closer to the object than the light itself?
-                auto shadow_res = trace(shadowPointOrig, lightDir, scene.get_objects());
-                bool inShadow = shadow_res && (shadow_res->tNear * shadow_res->tNear < lightDistance2);
+                auto shadow_res = trace(shadowPointOrig, lightDir, scene.get_objects()); // 计算阴影的起点
+                bool inShadow = shadow_res && (shadow_res->tNear * shadow_res->tNear < lightDistance2); // 计算阴影的起点是否在阴影中
 
-                lightAmt += inShadow ? 0 : light->intensity * LdotN;
-                Vector3f reflectionDirection = reflect(-lightDir, N);
+                lightAmt += inShadow ? 0 : light->intensity * LdotN; // 计算漫反射和镜面反射的强度
+                Vector3f reflectionDirection = reflect(-lightDir, N); // 计算反射方向
 
                 specularColor += powf(std::max(0.f, -dotProduct(reflectionDirection, dir)),
                                       payload->hit_obj->specularExponent) *
-                                 light->intensity;
+                                 light->intensity; // 计算镜面反射的强度
             }
 
-            hitColor = lightAmt * payload->hit_obj->evalDiffuseColor(st) * payload->hit_obj->Kd + specularColor * payload->hit_obj->Ks;
+            hitColor = lightAmt * payload->hit_obj->evalDiffuseColor(st) * payload->hit_obj->Kd + specularColor * payload->hit_obj->Ks; // 计算光线颜色
             break;
         }
         }
     }
 
-    return hitColor;
+    return hitColor; // 返回光线颜色
 }
 
 // [comment]
