@@ -213,7 +213,7 @@ Vector3f castRay(
     const Vector3f &orig, const Vector3f &dir, const Scene &scene,
     int depth)
 {
-    if (depth > scene.maxDepth) // 如果光线深度大于最大深度，则返回背景颜色
+    if (depth > scene.maxDepth) // 最大递归深度, 如果光线深度大于最大深度，则返回背景颜色
     {
         return Vector3f(0.0, 0.0, 0.0); // 返回背景颜色
     }
@@ -246,10 +246,9 @@ Vector3f castRay(
                     ? hitPoint - N * scene.epsilon
                     : hitPoint + N * scene.epsilon;
             // 计算反射的颜色
-            Vector3f reflectionColor = castRay(reflectionRayOrig, reflectionDirection, scene, depth + 1);
+            Vector3f reflectionColor = castRay(reflectionRayOrig, reflectionDirection, scene, depth + 1); // 递归计算
             // 计算折射的颜色
-            Vector3f refractionColor = castRay(
-                refractionRayOrig, refractionDirection, scene, depth + 1);
+            Vector3f refractionColor = castRay(refractionRayOrig, refractionDirection, scene, depth + 1); // 递归计算
             // 计算菲涅尔方程
             float kr = fresnel(dir, N, payload->hit_obj->ior);
             // 计算反射和折射的颜色
@@ -263,7 +262,7 @@ Vector3f castRay(
             // 计算反射的起点
             Vector3f reflectionRayOrig = (dotProduct(reflectionDirection, N) < 0) ? hitPoint + N * scene.epsilon : hitPoint - N * scene.epsilon;
             // 计算反射的颜色
-            hitColor = castRay(reflectionRayOrig, reflectionDirection, scene, depth + 1) * kr;
+            hitColor = castRay(reflectionRayOrig, reflectionDirection, scene, depth + 1) * kr; // 递归计算反射的颜色
             break;
         }
         default:
@@ -272,31 +271,46 @@ Vector3f castRay(
             // We use the Phong illumation model int the default case. The phong model
             // is composed of a diffuse and a specular reflection component.
             // [/comment]
-            // 计算漫反射和镜面反射的强度
+            // 累积的漫反射光照强度 和 累积的镜面反射颜色
             Vector3f lightAmt = 0, specularColor = 0;
             // 计算阴影的起点
-            // 这个公式的含义是：如果光线方向与法线方向的点积小于0，则阴影点在物体内部，否则阴影点在物体外部
+
+            // 从交点沿法线方向偏移 epsilon
+            // 若视线方向与法线夹角 > 90°（点在背面），起点在法线正方向；否则在负方向
             Vector3f shadowPointOrig = (dotProduct(dir, N) < 0) ? hitPoint + N * scene.epsilon : hitPoint - N * scene.epsilon;
             // [comment]
             // Loop over all lights in the scene and sum their contribution up
             // We also apply the lambert cosine law
             // [/comment]
-            // 遍历所有光源，计算漫反射和镜面反射的强度
-            // 计算漫反射和镜面反射的强度
-            for (auto &light : scene.get_lights()) // 遍历所有光源，计算漫反射和镜面反射的强度
+
+            // 遍历所有光源
+            for (auto &light : scene.get_lights())
             {
                 Vector3f lightDir = light->position - hitPoint; // 计算光源方向
                 // square of the distance between hitPoint and the light
                 float lightDistance2 = dotProduct(lightDir, lightDir); // 计算光源距离的平方
                 lightDir = normalize(lightDir); // 计算光源方向
-                float LdotN = std::max(0.f, dotProduct(lightDir, N)); // 计算光源方向与法线方向的点积
-                // is the point in shadow, and is the nearest occluding object closer to the object than the light itself?
+
+                // 计算漫反射（Lambert 定律）L·N（光源方向与法线的点积）
+                // 光照强度与入射角余弦成正比
+                // std::max(0.f, ...)：背面不接收光照
+                float LdotN = std::max(0.f, dotProduct(lightDir, N));
+                // is the point in shadow, and is the nearest occluding object
+                // closer to the object than the light itself?
+                // 阴影检测
+                // 从偏移起点向光源方向发射阴影光线
+                // 若命中物体且距离小于到光源的距离，则点在阴影中
                 auto shadow_res = trace(shadowPointOrig, lightDir, scene.get_objects()); // 计算阴影的起点
                 bool inShadow = shadow_res && (shadow_res->tNear * shadow_res->tNear < lightDistance2); // 计算阴影的起点是否在阴影中
-
-                lightAmt += inShadow ? 0 : light->intensity * LdotN; // 计算漫反射和镜面反射的强度
-                Vector3f reflectionDirection = reflect(-lightDir, N); // 计算反射方向
-
+                // 累积漫反射强度
+                lightAmt += inShadow ? 0 : light->intensity * LdotN;
+                // 计算光线反射方向（注意取反）
+                Vector3f reflectionDirection = reflect(-lightDir, N);
+                // 计算镜面反射（Phong 高光）
+                // -dotProduct(reflectionDirection,
+                // dir)：反射方向与视线方向的点积（视线方向取反）
+                // powf(..., specularExponent)：高光衰减，指数越大高光越集中
+                // 视线越接近反射方向，高光越强
                 specularColor += powf(std::max(0.f, -dotProduct(reflectionDirection, dir)),
                                       payload->hit_obj->specularExponent) *
                                  light->intensity; // 计算镜面反射的强度

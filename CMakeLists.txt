@@ -64,18 +64,16 @@ endif()
 
 
 # 将源代码添加到此项目的可执行文件。
+# 使用 GLOB 收集 assignment5 目录下的所有源文件
+# 注意：添加新文件后需要重新运行 CMake 配置
+file(GLOB ASSIGNMENT5_SOURCES
+    "src/assignment5/*.cpp"
+    "src/assignment5/*.hpp"
+)
+
 add_executable (games101
     "src/main.cpp"
-    "src/assignment5/main.cpp"
-    "src/assignment5/Object.cpp"
-    "src/assignment5/Vector.cpp"
-    "src/assignment5/Sphere.hpp"
-    "src/assignment5/global.hpp"
-    "src/assignment5/Triangle.hpp"
-    "src/assignment5/Scene.cpp"
-    "src/assignment5/Scene.hpp"
-    "src/assignment5/Light.hpp"
-    "src/assignment5/Renderer.cpp"
+    ${ASSIGNMENT5_SOURCES}
 )
 
 if (CMAKE_VERSION VERSION_GREATER 3.12)
