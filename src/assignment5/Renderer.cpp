@@ -194,7 +194,7 @@ std::optional<hit_payload> trace(
 
 // Whitted-style光线追踪
 // 参数说明：
-// - const Vector3f &orig: 光线起点
+// - const Vector3f &orig: 光线起点是eye_pos的位置
 // - const Vector3f &dir: 光线方向
 // - const Scene &scene: 场景
 // - int depth: 光线深度
@@ -218,7 +218,7 @@ Vector3f castRay(
         return Vector3f(0.0, 0.0, 0.0); // 返回背景颜色
     }
 
-    Vector3f hitColor = scene.backgroundColor; // 初始化光线颜色为背景颜色
+    Vector3f hitColor = scene.backgroundColor; // 初始化光线颜色为背景颜色(如果没有阻挡, 看到的就是背景颜色)
     // 这是 C++17 的 if 语句加强语法，称为 "if 带初始化语句（if with initializer statement）"。
     // auto payload = trace(orig, dir, scene.get_objects()) 在 if 作用域内部定义并初始化变量 payload，
     // 并在 payload 有值（即 payload 转换为 true，通常是 std::optional、智能指针等可判断真假类型）时进入 if 块。
@@ -233,8 +233,7 @@ Vector3f castRay(
         case REFLECTION_AND_REFRACTION: // 反射和折射
         {
             Vector3f reflectionDirection = normalize(reflect(dir, N)); // 计算反射方向
-            Vector3f refractionDirection = normalize(
-                refract(dir, N, payload->hit_obj->ior)); // 计算折射方向
+            Vector3f refractionDirection = normalize(refract(dir, N, payload->hit_obj->ior)); // 计算折射方向
             // 计算反射的起点
             Vector3f reflectionRayOrig =
                 (dotProduct(reflectionDirection, N) < 0)
@@ -297,9 +296,7 @@ Vector3f castRay(
                 float LdotN = std::max(0.f, dotProduct(lightDir, N));
                 // is the point in shadow, and is the nearest occluding object
                 // closer to the object than the light itself?
-                // 阴影检测
-                // 从偏移起点向光源方向发射阴影光线
-                // 若命中物体且距离小于到光源的距离，则点在阴影中
+                // 阴影检测, 从物体表面向光源发射光线, 如何能够连接, 则不再阴影中, 如果不能连接, 则在阴影中
                 auto shadow_res = trace(shadowPointOrig, lightDir, scene.get_objects()); // 计算阴影的起点
                 bool inShadow = shadow_res && (shadow_res->tNear * shadow_res->tNear < lightDistance2); // 计算阴影的起点是否在阴影中
                 // 累积漫反射强度
@@ -358,7 +355,7 @@ void Renderer::Render(const Scene &scene)
             float y = (2 * (((float)j + 0.5) / scene.height) - 1) * -1 * scale;
 
             Vector3f dir = normalize(Vector3f(x, y, -1)); // Don't forget to normalize this direction!
-            framebuffer[m++] = castRay(eye_pos, dir, scene, 0);
+            framebuffer[m++] = castRay(eye_pos, dir, scene, 0); // 以人眼位置作为光线起点, 人眼和像素作为方向
         }
         UpdateProgress(j / (float)scene.height);
     }

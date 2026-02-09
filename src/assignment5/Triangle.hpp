@@ -93,10 +93,10 @@ public:
     // 参数说明：
     // - const Vector3f &: 不使用，可忽略。
     // - const Vector3f &: 不使用，可忽略。
-    // - const uint32_t &index: 三角形索引，类型为 uint32_t。
-    // - const Vector2f &uv: 交点纹理坐标，类型为 Vector2f。
-    // - Vector3f &N: 法线，类型为 Vector3f。
-    // - Vector2f &st: 交点纹理坐标，类型为 Vector2f。
+    // - const uint32_t &index: 三角形索引，类型为 uint32_t, 传入
+    // - const Vector2f &uv: 交点纹理坐标，类型为 Vector2f, 返回
+    // - Vector3f &N: 法线，类型为 Vector3f, 返回
+    // - Vector2f &st: 交点纹理坐标，类型为 Vector2f, 返回
     void getSurfaceProperties(const Vector3f &, const Vector3f &, const uint32_t &index, const Vector2f &uv, Vector3f &N,
                               Vector2f &st) const override
     {
@@ -118,6 +118,7 @@ public:
     Vector3f evalDiffuseColor(const Vector2f &st) const override
     {
         float scale = 5; // 缩放因子
+        // 棋盘格纹的的经典算法
         float pattern = (fmodf(st.x * scale, 1) > 0.5) ^ (fmodf(st.y * scale, 1) > 0.5); // 计算模式
         return lerp(Vector3f(0.815, 0.235, 0.031), Vector3f(0.937, 0.937, 0.231), pattern); // 插值计算漫反射颜色
     }
